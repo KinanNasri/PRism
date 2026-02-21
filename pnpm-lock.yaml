@@ -48,13 +48,13 @@ importers:
       '@inquirer/prompts':
         specifier: ^7.2.1
         version: 7.10.1(@types/node@20.19.33)
-      prism-core:
-        specifier: workspace:*
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^20.17.12
         version: 20.19.33
+      prism-core:
+        specifier: workspace:*
+        version: link:../core
       tsup:
         specifier: ^8.3.6
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)

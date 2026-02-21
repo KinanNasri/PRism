@@ -8,6 +8,7 @@ export default defineConfig({
     sourcemap: true,
     clean: true,
     target: "node20",
+    noExternal: [/prism-core/],
     banner: {
         js: "#!/usr/bin/env node",
     },

@@ -1,6 +1,6 @@
 {
     "name": "prism-review",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "type": "module",
     "bin": {
         "prism": "dist/index.js"
@@ -13,10 +13,10 @@
         "lint": "tsc --noEmit"
     },
     "dependencies": {
-        "prism-core": "^0.1.0",
         "@inquirer/prompts": "^7.2.1"
     },
     "devDependencies": {
+        "prism-core": "workspace:*",
         "typescript": "^5.7.3",
         "tsup": "^8.3.6",
         "@types/node": "^20.17.12"
