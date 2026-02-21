@@ -1,82 +1,54 @@
-import { prepareDiffs, buildDiffBlock } from "./diff.js";
-import { buildSystemPrompt, buildUserPrompt } from "./prompt.js";
+import type { PRScopeConfig, ReviewResult, PullRequestFile } from "./types.js";
+import { createProvider } from "./providers/factory.js";
+import { prepareDiffs } from "./diff.js";
+import { buildPrompt } from "./prompt.js";
 import { parseReviewResult } from "./schema.js";
 import { renderComment, renderFallbackComment } from "./renderer.js";
-import { createProvider } from "./providers/factory.js";
-import { computeReviewHash } from "./hash.js";
-import type { PrismConfig, PullRequestFile, ReviewResult } from "./types.js";
 
-export interface EngineResult {
-    comment: string;
-    review: ReviewResult | null;
-    hash: string;
-    truncated: boolean;
-}
-
-export async function runReview(
-    config: PrismConfig,
-    files: PullRequestFile[],
-): Promise<EngineResult> {
-    const { filtered, totalBytes } = prepareDiffs(files, config.maxFiles, config.maxDiffBytes);
-    const truncated = totalBytes >= config.maxDiffBytes;
-
-    if (filtered.length === 0) {
-        const fallback: ReviewResult = {
-            summary: "No reviewable files found in this PR — all changes are in generated, binary, or dependency files.",
+export async function runReview(config: PRScopeConfig, files: PullRequestFile[]): Promise<string> {
+    if (files.length === 0) {
+        return renderComment({
+            summary: "This PR has no reviewable file changes.",
             overall_risk: "low",
             findings: [],
             praise: [],
-        };
-
-        return {
-            comment: renderComment(fallback),
-            review: fallback,
-            hash: computeReviewHash("empty", config),
-            truncated: false,
-        };
+        });
     }
 
-    const diffBlock = buildDiffBlock(filtered);
-    const hash = computeReviewHash(diffBlock, config);
+    const { filtered } = prepareDiffs(files, config.maxFiles, config.maxDiffBytes);
+
+    if (filtered.length === 0) {
+        return renderComment({
+            summary: "All changed files were filtered out (lockfiles, build artifacts, binaries). Nothing to review.",
+            overall_risk: "low",
+            findings: [],
+            praise: [],
+        });
+    }
 
     const provider = createProvider(config);
-    const systemPrompt = buildSystemPrompt(config);
-    const userPrompt = buildUserPrompt(diffBlock);
-
-    const rawResponse = await provider.chat([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-    ]);
-
-    const parsed = extractAndParseJson(rawResponse);
-    const review = parseReviewResult(parsed);
-
-    if (!review) {
-        return {
-            comment: renderFallbackComment("Could not parse structured output from the model."),
-            review: null,
-            hash,
-            truncated,
-        };
-    }
-
-    return {
-        comment: renderComment(review),
-        review,
-        hash,
-        truncated,
-    };
-}
-
-function extractAndParseJson(raw: string): unknown {
-    const trimmed = raw.trim();
-
-    const fenced = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-    const toParse = fenced ? fenced[1]! : trimmed;
+    const messages = buildPrompt(filtered, config);
+    const raw = await provider.chat(messages);
 
     try {
-        return JSON.parse(toParse);
-    } catch {
-        return null;
+        const cleaned = extractJson(raw);
+        const result: ReviewResult = parseReviewResult(JSON.parse(cleaned));
+        return renderComment(result);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return renderFallbackComment(`Schema validation failed: ${message}`);
     }
+}
+
+function extractJson(text: string): string {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced?.[1]) return fenced[1].trim();
+
+    const braceStart = text.indexOf("{");
+    const braceEnd = text.lastIndexOf("}");
+    if (braceStart !== -1 && braceEnd > braceStart) {
+        return text.slice(braceStart, braceEnd + 1);
+    }
+
+    return text.trim();
 }

@@ -1,19 +1,18 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import {
     createOpenAIProvider,
     createAnthropicProvider,
     createOpenAICompatProvider,
     createOllamaProvider,
-} from "prism-core";
-import type { ModelInfo, ProviderType } from "prism-core";
+} from "prscope-core";
+import type { ModelInfo, ProviderType } from "prscope-core";
 import { generateConfig } from "../generators/config.js";
 import { generateWorkflow } from "../generators/workflow.js";
 import * as ui from "../ui.js";
 import {
     askProvider,
-    askApiKeyEnv,
-    askApiKeyForFetch,
+    askApiKey,
     askBaseUrl,
     askModelFromList,
     askModelManual,
@@ -24,17 +23,24 @@ import {
     getFallbackModels,
 } from "./init-prompts.js";
 
+const ENV_VAR_NAMES: Record<ProviderType, string> = {
+    openai: "OPENAI_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    "openai-compat": "LLM_API_KEY",
+    ollama: "OLLAMA_HOST",
+};
+
 export async function runInit(): Promise<void> {
     ui.banner();
-    ui.heading("Initialize PRism");
+    ui.heading("Initialize PRScope");
 
     const provider = await askProvider();
-    const apiKeyEnv = await askApiKeyEnv(provider);
+    const apiKey = await askApiKey(provider);
     const baseUrl = await askBaseUrl(provider);
+    const apiKeyEnv = ENV_VAR_NAMES[provider];
 
     ui.heading("Model selection");
 
-    const apiKey = await askApiKeyForFetch(provider, apiKeyEnv);
     let models: ModelInfo[] = [];
 
     if (apiKey || provider === "ollama") {
@@ -65,7 +71,13 @@ export async function runInit(): Promise<void> {
     const maxDiffBytes = await askMaxDiffBytes();
 
     ui.divider();
-    ui.heading("Generating configuration");
+    ui.heading("Setting up your project");
+
+    if (apiKey && provider !== "ollama") {
+        await writeEnvFile(apiKeyEnv, apiKey);
+        await ensureGitignoreHasEnv();
+        ui.success(`Saved API key to .env (${apiKeyEnv})`);
+    }
 
     const configContent = generateConfig({
         provider,
@@ -80,18 +92,18 @@ export async function runInit(): Promise<void> {
 
     const workflowContent = generateWorkflow({ provider, apiKeyEnv });
 
-    const configPath = resolve(process.cwd(), "prism.config.json");
+    const configPath = resolve(process.cwd(), "prscope.config.json");
     await writeFile(configPath, configContent, "utf-8");
-    ui.success("Created prism.config.json");
+    ui.success("Created prscope.config.json");
 
-    const workflowPath = resolve(process.cwd(), ".github/workflows/prism.yml");
+    const workflowPath = resolve(process.cwd(), ".github/workflows/prscope.yml");
     await mkdir(dirname(workflowPath), { recursive: true });
     await writeFile(workflowPath, workflowContent, "utf-8");
-    ui.success("Created .github/workflows/prism.yml");
+    ui.success("Created .github/workflows/prscope.yml");
 
     ui.divider();
 
-    ui.box("PRism Configuration", [
+    ui.box("PRScope Configuration", [
         `Provider:     ${provider}`,
         `Model:        ${model}`,
         `Profile:      ${profile}`,
@@ -101,11 +113,47 @@ export async function runInit(): Promise<void> {
     ]);
 
     ui.nextSteps([
-        `Add your API key as a repository secret named ${apiKeyEnv}`,
-        "Commit prism.config.json and .github/workflows/prism.yml",
-        "Open a pull request",
-        "Watch PRism review your code",
+        `Add ${apiKeyEnv} to your GitHub repo secrets (Settings > Secrets > Actions)`,
+        "Commit prscope.config.json and .github/workflows/prscope.yml",
+        "Open a pull request — PRScope will review it automatically",
     ]);
+}
+
+async function writeEnvFile(envVar: string, value: string): Promise<void> {
+    const envPath = resolve(process.cwd(), ".env");
+    let existing = "";
+
+    try {
+        existing = await readFile(envPath, "utf-8");
+    } catch {
+        // no existing .env
+    }
+
+    const pattern = new RegExp(`^${envVar}=.*$`, "m");
+
+    if (pattern.test(existing)) {
+        existing = existing.replace(pattern, `${envVar}=${value}`);
+    } else {
+        existing = existing.trimEnd() + (existing.length > 0 ? "\n" : "") + `${envVar}=${value}\n`;
+    }
+
+    await writeFile(envPath, existing, "utf-8");
+}
+
+async function ensureGitignoreHasEnv(): Promise<void> {
+    const gitignorePath = resolve(process.cwd(), ".gitignore");
+    let content = "";
+
+    try {
+        content = await readFile(gitignorePath, "utf-8");
+    } catch {
+        // no existing .gitignore
+    }
+
+    if (!content.includes(".env")) {
+        content = content.trimEnd() + (content.length > 0 ? "\n" : "") + ".env\n";
+        await writeFile(gitignorePath, content, "utf-8");
+    }
 }
 
 async function fetchModelsForProvider(
@@ -142,6 +190,8 @@ async function fetchModelsForProvider(
                 });
                 return await p.listModels();
             }
+            default:
+                return [];
         }
     } catch {
         return [];

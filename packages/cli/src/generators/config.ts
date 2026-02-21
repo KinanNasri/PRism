@@ -1,7 +1,7 @@
-import type { PrismConfig, ReviewProfile, CommentMode } from "prism-core";
+import type { PRScopeConfig, ReviewProfile, CommentMode } from "prscope-core";
 
 export function generateConfig(options: {
-    provider: PrismConfig["provider"];
+    provider: PRScopeConfig["provider"];
     model: string;
     apiKeyEnv: string;
     baseUrl?: string;
@@ -20,9 +20,7 @@ export function generateConfig(options: {
         maxDiffBytes: options.maxDiffBytes,
     };
 
-    if (options.baseUrl) {
-        config.baseUrl = options.baseUrl;
-    }
+    if (options.baseUrl) config.baseUrl = options.baseUrl;
 
     return JSON.stringify(config, null, 2) + "\n";
 }

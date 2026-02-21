@@ -1,96 +1,101 @@
 <div align="center">
 
-# PRism
+# PRScope
 
-**See through your pull requests.**
+**AI-powered code reviews that actually help.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+Stop waiting days for human reviewers to point out an unvalidated input six files deep.
+PRScope reads your diffs, understands context, and posts structured findings — directly on your pull request in under a minute.
 
-AI-powered pull request reviews that catch bugs, flag security risks, and surface real issues — not noise.
+[![npm](https://img.shields.io/npm/v/prscope?color=blue&label=npm)](https://www.npmjs.com/package/prscope)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 </div>
 
 ---
 
-## 60-Second Setup
+## What it does
+
+You open a pull request. PRScope:
+
+1. Reads the diff
+2. Sends it to your chosen LLM (OpenAI, Anthropic, Ollama, or any OpenAI-compatible endpoint)
+3. Posts a structured review comment with severity ratings, risk assessment, and concrete suggestions
+
+That's it. No dashboards. No sign-ups. No vendor lock-in. Your API key, your model, your rules.
+
+---
+
+## 30-second setup
 
 ```bash
-npx prism-review init
+npx prscope init
 ```
 
-The wizard will:
+The wizard walks you through everything:
 
-1. Ask your LLM provider (OpenAI, Anthropic, Ollama, or any OpenAI-compatible endpoint)
-2. Auto-detect available models and let you pick from a searchable list
-3. Generate `prism.config.json` and `.github/workflows/prism.yml`
+- Pick a provider (OpenAI, Anthropic, Ollama, or self-hosted)
+- Paste your API key (stored locally in `.env`, never committed)
+- Choose a model from a live list or curated defaults
+- Set your review profile (balanced, security-focused, performance-focused, or strict)
 
-Then add your API key as a repo secret, commit, open a PR, and watch.
+It generates two files:
 
----
+| File | Purpose |
+|------|---------|
+| `prscope.config.json` | Review settings — provider, model, profile, limits |
+| `.github/workflows/prscope.yml` | GitHub Action that runs on every PR |
 
-## Features
+Commit both. Add your API key to **GitHub Secrets** (Settings > Secrets > Actions). Done.
 
-**Multi-Provider Support** — OpenAI, Anthropic, Ollama, LM Studio, vLLM, and any `/v1/chat/completions` endpoint.
-
-**Auto-Model Detection** — No guessing model names. PRism fetches available models and shows a searchable picker during setup.
-
-**Structured Reviews** — Every review is typed, validated against a Zod schema, and rendered as a clean PR comment with risk levels and categorized findings.
-
-**Review Profiles** — `balanced`, `security`, `performance`, or `strict` — tune the reviewer to what matters for your project.
-
-**Zero Spam** — One comment per PR, updated in place. No notification storms.
-
-**Noise Filtering** — Lockfiles, build artifacts, vendored code, and binaries are automatically skipped. Large diffs are truncated with markers.
-
-**Secure by Default** — Secrets never logged. Uses `pull_request` event (not `pull_request_target`). Defensive validation everywhere.
+Next time someone opens a PR, PRScope reviews it automatically.
 
 ---
 
-## Demo
+## What a review looks like
 
-<!-- TODO: Add demo GIF showing a PRism review comment on a real PR -->
+PRScope posts a single comment on your PR with:
 
-*Coming soon.*
+- **Risk assessment** — low, medium, or high, based on what changed
+- **Findings table** — severity, category, file location, one-line title for each issue
+- **Detailed breakdown** — collapsible section with full explanations and fix suggestions
+- **Praise** — what was done well (because reviews shouldn't only be negative)
 
----
-
-## How It Works
-
-```
-PR Opened → Action Triggers → PRism reads changed files
-    → Filters noise → Builds prompt (profile-aware)
-    → Calls LLM → Validates response (Zod)
-    → Renders Markdown → Posts/updates on PR
-```
-
-PRism produces a single, high-signal comment with:
-
-- **Risk level** — Low, Medium, or High
-- **Findings table** — severity, category, location
-- **Collapsible details** — reasoning and suggestions
-- **Praise** — good patterns worth calling out
+Everything is Markdown. No images, no external links, no JavaScript. Just a clean, readable comment that works on any GitHub plan.
 
 ---
 
-## Providers
+## Supported providers
 
-| Provider | Models API | Chat API | Notes |
-|----------|-----------|----------|-------|
-| **OpenAI** | `GET /v1/models` | `POST /v1/chat/completions` | Featured: gpt-4.1, o3, o4-mini |
-| **Anthropic** | `GET /v1/models` | `POST /v1/messages` | Newest-first sort, fallback list |
-| **OpenAI-compatible** | `GET /v1/models` | `POST /v1/chat/completions` | LM Studio, vLLM, text-gen-webui |
-| **Ollama** | `GET /api/tags` | `POST /api/chat` | Local models, recommended picks |
+| Provider | Models | Setup |
+|----------|--------|-------|
+| **OpenAI** | GPT-4.1, o3, o4-mini, GPT-4o | `OPENAI_API_KEY` secret |
+| **Anthropic** | Claude Sonnet 4, Claude 3.7, Claude 3.5 | `ANTHROPIC_API_KEY` secret |
+| **Ollama** | Llama 3.3, Qwen 2.5, DeepSeek, Codestral | Local — no key needed |
+| **OpenAI-compatible** | Any model behind a `/v1/chat/completions` endpoint | Custom base URL + key |
 
-All providers include retry with exponential backoff, configurable timeouts, and secret sanitization.
+If your provider speaks the OpenAI API protocol, PRScope supports it. LM Studio, vLLM, Together, Groq — all work out of the box.
+
+---
+
+## Review profiles
+
+Control how aggressive the review is:
+
+| Profile | What it catches |
+|---------|----------------|
+| `balanced` | Bugs, security issues, performance, code quality — practical defaults |
+| `security` | Injection attacks, auth flaws, data exposure, insecure defaults |
+| `performance` | Memory leaks, unnecessary allocations, algorithmic issues |
+| `strict` | Everything. Style, naming, docs, edge cases. Nothing gets through |
+
+Set once in `prscope.config.json`. Change anytime.
 
 ---
 
 ## Configuration
 
-### `prism.config.json`
+All settings live in `prscope.config.json`:
 
 ```json
 {
@@ -104,102 +109,95 @@ All providers include retry with exponential backoff, configurable timeouts, and
 }
 ```
 
-Also supports `.prismrc.json`.
+| Field | What it controls |
+|-------|-----------------|
+| `provider` | `openai`, `anthropic`, `openai-compat`, `ollama` |
+| `model` | The model ID to use |
+| `apiKeyEnv` | Name of the env var / secret holding your API key |
+| `profile` | Review intensity — `balanced`, `security`, `performance`, `strict` |
+| `commentMode` | `summary-only` (one comment) or `inline+summary` |
+| `maxFiles` | Skip PRs that touch more files than this |
+| `maxDiffBytes` | Total diff budget — large diffs get truncated, not skipped |
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `provider` | `openai \| anthropic \| openai-compat \| ollama` | — | LLM provider |
-| `model` | `string` | — | Model identifier |
-| `apiKeyEnv` | `string` | — | Env var name for the API key |
-| `baseUrl` | `string?` | provider default | Custom API base URL |
-| `profile` | `balanced \| security \| performance \| strict` | `balanced` | Review focus |
-| `commentMode` | `summary-only \| inline+summary` | `summary-only` | Comment style |
-| `maxFiles` | `number` | `30` | Max files to review |
-| `maxDiffBytes` | `number` | `100000` | Max total diff size |
+---
 
-### Action Inputs
+## How it works under the hood
 
-All config fields can be overridden via action inputs:
+```
+PR opened → GitHub Action triggers → PRScope reads diff
+    ↓
+Filters noise (lockfiles, build artifacts, binaries)
+    ↓
+Builds a structured prompt with your review profile
+    ↓
+Sends to your LLM → parses structured JSON response
+    ↓
+Validates output against a strict schema (Zod)
+    ↓
+Renders a clean Markdown comment → posts to PR
+```
+
+PRScope never stores your code. The diff goes to your chosen LLM provider and nowhere else. If you use Ollama, everything stays on your machine.
+
+---
+
+## Using as a GitHub Action directly
+
+If you prefer to set up the action manually instead of using `npx prscope init`:
 
 ```yaml
-- uses: KinanNasri/PRism/packages/action@main
-  with:
-    provider: openai
-    model: gpt-4.1
-    api_key_env: OPENAI_API_KEY
-    profile: strict
-    config_path: prism.config.json
+name: PRScope Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: KinanNasri/PRScope@main
+        with:
+          config_path: prscope.config.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
 ---
 
-## Security
-
-- **Secrets** are read from environment variables and never logged.
-- **Event safety**: uses `pull_request` (not `pull_request_target`) to prevent untrusted code from accessing secrets.
-- **Validation**: all LLM responses are validated with Zod. Invalid responses produce a safe fallback comment.
-- **Token scope**: `GITHUB_TOKEN` is used only for reading PR files and posting comments.
-- **Rate limiting**: retry logic respects rate limits with exponential backoff.
-
-See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
-
----
-
-## Roadmap
-
-- [ ] Inline review comments (file-level annotations)
-- [ ] PR description analysis
-- [ ] Custom review rules via config
-- [ ] Review caching (skip re-reviews on unchanged commits)
-- [ ] Dashboard and analytics
-- [ ] VS Code extension
-- [ ] GitLab and Bitbucket support
-
----
-
-## Architecture
+## Project structure
 
 ```
 packages/
-├── core/          Review engine, providers, types, schemas
-│   └── src/
-│       ├── types.ts           Shared type definitions
-│       ├── schema.ts          Zod schemas
-│       ├── config.ts          Config loader
-│       ├── diff.ts            Diff parser + filter
-│       ├── prompt.ts          Prompt builder
-│       ├── engine.ts          Review orchestrator
-│       ├── renderer.ts        Markdown renderer
-│       ├── hash.ts            Cache key utility
-│       └── providers/
-│           ├── openai.ts
-│           ├── anthropic.ts
-│           ├── openai-compat.ts
-│           ├── ollama.ts
-│           ├── factory.ts
-│           └── retry.ts
-├── cli/           Interactive setup wizard
-│   └── src/
-│       ├── index.ts
-│       ├── ui.ts
-│       ├── commands/
-│       │   ├── init.ts
-│       │   └── init-prompts.ts
-│       └── generators/
-│           ├── config.ts
-│           └── workflow.ts
-└── action/        GitHub Action entry
-    └── src/
-        ├── index.ts
-        └── github.ts
+  core/     Review engine, diff parsing, LLM providers, Markdown renderer
+  cli/      The `prscope` command — interactive setup wizard
+  action/   GitHub Action wrapper
 ```
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, PR guidelines, and code style.
+PRScope is open source under the MIT license. Issues and PRs are welcome.
+
+```bash
+git clone https://github.com/KinanNasri/PRScope.git
+cd PRScope
+pnpm install
+pnpm run build
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+---
 
 ## License
 
-[MIT](LICENSE)
+MIT — do whatever you want with it.

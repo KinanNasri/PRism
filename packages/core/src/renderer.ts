@@ -1,5 +1,5 @@
 import type { Finding, ReviewResult, RiskLevel } from "./types.js";
-import { PRISM_COMMENT_MARKER } from "./types.js";
+import { PRSCOPE_COMMENT_MARKER } from "./types.js";
 
 const RISK_LABELS: Record<RiskLevel, string> = {
     low: "Low Risk",
@@ -93,9 +93,9 @@ export function renderComment(result: ReviewResult): string {
     const indicator = riskIndicator(result.overall_risk);
 
     return [
-        PRISM_COMMENT_MARKER,
+        PRSCOPE_COMMENT_MARKER,
         "",
-        `## PRism Review — ${badge} ${indicator}`,
+        `## PRScope Review — ${badge} ${indicator}`,
         "",
         result.summary,
         "",
@@ -108,18 +108,18 @@ export function renderComment(result: ReviewResult): string {
         renderPraise(result.praise),
         "---",
         "",
-        "<sub>Powered by <a href=\"https://github.com/KinanNasri/PRism\">PRism</a> — see through your pull requests.</sub>",
+        "<sub>Powered by <a href=\"https://github.com/KinanNasri/PRScope\">PRScope</a></sub>",
         "",
     ].join("\n");
 }
 
 export function renderFallbackComment(error: string): string {
     return [
-        PRISM_COMMENT_MARKER,
+        PRSCOPE_COMMENT_MARKER,
         "",
-        "## PRism Review",
+        "## PRScope Review",
         "",
-        "PRism could not produce a structured review for this PR.",
+        "PRScope could not produce a structured review for this PR.",
         "",
         `**Reason:** ${error}`,
         "",
@@ -127,7 +127,7 @@ export function renderFallbackComment(error: string): string {
         "",
         "---",
         "",
-        "<sub>Powered by <a href=\"https://github.com/KinanNasri/PRism\">PRism</a></sub>",
+        "<sub>Powered by <a href=\"https://github.com/KinanNasri/PRScope\">PRScope</a></sub>",
         "",
     ].join("\n");
 }

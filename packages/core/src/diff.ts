@@ -1,7 +1,7 @@
 import type { PullRequestFile } from "./types.js";
 import { NOISE_PATTERNS } from "./types.js";
 
-const TRUNCATION_MARKER = "\n... [TRUNCATED by PRism — diff too large] ...\n";
+const TRUNCATION_MARKER = "\n... [TRUNCATED by PRScope — diff too large] ...\n";
 
 export function isNoiseFile(filename: string): boolean {
     return NOISE_PATTERNS.some((pattern) => pattern.test(filename));

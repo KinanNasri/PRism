@@ -1,25 +1,25 @@
 import * as github from "@actions/github";
-import type { PullRequestFile } from "prism-core";
-import { PRISM_COMMENT_MARKER } from "prism-core";
+import type { PullRequestFile } from "prscope-core";
+import { PRSCOPE_COMMENT_MARKER } from "prscope-core";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 
-interface PullRequestContext {
+export interface PullRequestContext {
     owner: string;
     repo: string;
-    pullNumber: number;
+    number: number;
 }
 
-export function getPullRequestContext(): PullRequestContext | null {
-    const { context } = github;
-    const pr = context.payload.pull_request;
+export function getPullRequestContext(): PullRequestContext {
+    const payload = github.context.payload;
+    const pr = payload.pull_request;
 
-    if (!pr) return null;
+    if (!pr) throw new Error("This action must run on pull_request events.");
 
     return {
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        pullNumber: pr.number,
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        number: pr.number as number,
     };
 }
 
@@ -34,7 +34,7 @@ export async function fetchPullRequestFiles(
         const { data } = await octokit.rest.pulls.listFiles({
             owner: ctx.owner,
             repo: ctx.repo,
-            pull_number: ctx.pullNumber,
+            pull_number: ctx.number,
             per_page: 100,
             page,
         });
@@ -45,7 +45,17 @@ export async function fetchPullRequestFiles(
             let patch = file.patch;
 
             if (!patch && file.status !== "removed") {
-                patch = await fetchRawPatch(octokit, ctx, file.filename);
+                try {
+                    const { data: rawDiff } = await octokit.rest.pulls.get({
+                        owner: ctx.owner,
+                        repo: ctx.repo,
+                        pull_number: ctx.number,
+                        mediaType: { format: "diff" },
+                    });
+                    patch = typeof rawDiff === "string" ? rawDiff : undefined;
+                } catch {
+                    patch = undefined;
+                }
             }
 
             files.push({
@@ -65,77 +75,47 @@ export async function fetchPullRequestFiles(
     return files;
 }
 
-async function fetchRawPatch(
-    octokit: Octokit,
-    ctx: PullRequestContext,
-    _filename: string,
-): Promise<string | undefined> {
-    try {
-        const { data } = await octokit.rest.pulls.get({
-            owner: ctx.owner,
-            repo: ctx.repo,
-            pull_number: ctx.pullNumber,
-            mediaType: { format: "diff" },
-        });
-
-        const diffText = data as unknown as string;
-        return diffText || undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-export async function findExistingComment(
-    octokit: Octokit,
-    ctx: PullRequestContext,
-): Promise<number | null> {
-    const { data: comments } = await octokit.rest.issues.listComments({
-        owner: ctx.owner,
-        repo: ctx.repo,
-        issue_number: ctx.pullNumber,
-        per_page: 100,
-    });
-
-    const botLogin = await getBotLogin(octokit);
-
-    const existing = comments.find((c) => {
-        const isMarked = c.body?.includes(PRISM_COMMENT_MARKER);
-        const isBot = botLogin ? c.user?.login === botLogin : true;
-        return isMarked && isBot;
-    });
-
-    return existing?.id ?? null;
-}
-
 export async function upsertComment(
     octokit: Octokit,
     ctx: PullRequestContext,
     body: string,
 ): Promise<void> {
-    const existingId = await findExistingComment(octokit, ctx);
+    const { data: comments } = await octokit.rest.issues.listComments({
+        owner: ctx.owner,
+        repo: ctx.repo,
+        issue_number: ctx.number,
+        per_page: 100,
+    });
 
-    if (existingId) {
+    const botLogin = await getBotLogin(octokit);
+    const existing = comments.find(
+        (c) =>
+            c.body?.includes(PRSCOPE_COMMENT_MARKER) &&
+            c.user?.login === botLogin,
+    );
+
+    if (existing) {
         await octokit.rest.issues.updateComment({
             owner: ctx.owner,
             repo: ctx.repo,
-            comment_id: existingId,
+            comment_id: existing.id,
             body,
         });
     } else {
         await octokit.rest.issues.createComment({
             owner: ctx.owner,
             repo: ctx.repo,
-            issue_number: ctx.pullNumber,
+            issue_number: ctx.number,
             body,
         });
     }
 }
 
-async function getBotLogin(octokit: Octokit): Promise<string | null> {
+async function getBotLogin(octokit: Octokit): Promise<string> {
     try {
         const { data } = await octokit.rest.users.getAuthenticated();
         return data.login;
     } catch {
-        return null;
+        return "github-actions[bot]";
     }
 }

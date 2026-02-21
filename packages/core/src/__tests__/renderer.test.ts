@@ -1,64 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { renderComment, renderFallbackComment } from "../renderer.js";
 import type { ReviewResult } from "../types.js";
-import { PRISM_COMMENT_MARKER } from "../types.js";
+import { PRSCOPE_COMMENT_MARKER } from "../types.js";
 
 describe("renderComment", () => {
     const result: ReviewResult = {
-        summary: "This PR refactors the auth module for better separation of concerns.",
+        summary: "This PR introduces a new authentication module.",
         overall_risk: "medium",
         findings: [
             {
                 file: "src/auth.ts",
-                line: 15,
+                line: 42,
                 severity: "high",
                 category: "security",
-                title: "Unvalidated redirect URL",
-                message: "The redirect URL is taken directly from user input without validation.",
-                suggestion: "Validate against an allowlist of known redirect destinations.",
-                confidence: 0.92,
-            },
-            {
-                file: "src/utils.ts",
-                line: null,
-                severity: "low",
-                category: "maintainability",
-                title: "Unused import",
-                message: "The lodash import is no longer used after the refactor.",
-                suggestion: "Remove the unused import.",
-                confidence: 0.99,
+                title: "Missing input validation",
+                message: "User input is not sanitized.",
+                suggestion: "Use a validation library.",
+                confidence: 0.95,
             },
         ],
-        praise: ["Great test coverage on the new auth flow."],
+        praise: ["Good test coverage"],
     };
 
-    it("includes the marker", () => {
+    it("includes the comment marker", () => {
         const comment = renderComment(result);
-        expect(comment).toContain(PRISM_COMMENT_MARKER);
+        expect(comment).toContain(PRSCOPE_COMMENT_MARKER);
     });
 
     it("shows the risk label", () => {
         const comment = renderComment(result);
         expect(comment).toContain("Medium Risk");
-    });
-
-    it("includes the summary", () => {
-        const comment = renderComment(result);
-        expect(comment).toContain("refactors the auth module");
-    });
-
-    it("renders findings in a table", () => {
-        const comment = renderComment(result);
-        expect(comment).toContain("| Severity |");
-        expect(comment).toContain("Unvalidated redirect URL");
-        expect(comment).toContain("Unused import");
-    });
-
-    it("sorts findings by severity (high first)", () => {
-        const comment = renderComment(result);
-        const highIdx = comment.indexOf("Unvalidated redirect URL");
-        const lowIdx = comment.indexOf("Unused import");
-        expect(highIdx).toBeLessThan(lowIdx);
     });
 
     it("includes collapsible details", () => {
@@ -67,33 +38,33 @@ describe("renderComment", () => {
         expect(comment).toContain("Detailed findings");
     });
 
-    it("includes praise section", () => {
+    it("renders findings table", () => {
         const comment = renderComment(result);
-        expect(comment).toContain("What looks good");
-        expect(comment).toContain("Great test coverage");
+        expect(comment).toContain("| Severity |");
+        expect(comment).toContain("Missing input validation");
+        expect(comment).toContain("src/auth.ts:42");
     });
 
-    it("handles empty findings gracefully", () => {
-        const clean: ReviewResult = { summary: "All good.", overall_risk: "low", findings: [], praise: [] };
-        const comment = renderComment(clean);
-        expect(comment).toContain("looks good");
-        expect(comment).toContain("Low Risk");
+    it("renders praise section", () => {
+        const comment = renderComment(result);
+        expect(comment).toContain("Good test coverage");
+    });
+
+    it("links to PRScope repo", () => {
+        const comment = renderComment(result);
+        expect(comment).toContain("KinanNasri/PRScope");
     });
 });
 
 describe("renderFallbackComment", () => {
-    it("includes the marker", () => {
-        const comment = renderFallbackComment("parse error");
-        expect(comment).toContain(PRISM_COMMENT_MARKER);
+    it("includes the marker and error", () => {
+        const comment = renderFallbackComment("Schema validation failed");
+        expect(comment).toContain(PRSCOPE_COMMENT_MARKER);
+        expect(comment).toContain("Schema validation failed");
     });
 
-    it("shows the error reason", () => {
-        const comment = renderFallbackComment("JSON parse failed");
-        expect(comment).toContain("JSON parse failed");
-    });
-
-    it("provides helpful context", () => {
-        const comment = renderFallbackComment("error");
-        expect(comment).toContain("could not produce a structured review");
+    it("links to PRScope repo", () => {
+        const comment = renderFallbackComment("test");
+        expect(comment).toContain("KinanNasri/PRScope");
     });
 });

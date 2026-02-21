@@ -63,7 +63,7 @@ describe("truncatePatch", () => {
         const patch = "a".repeat(200);
         const result = truncatePatch(patch, 50);
         expect(result.length).toBeLessThan(200);
-        expect(result).toContain("[TRUNCATED by PRism");
+        expect(result).toContain("[TRUNCATED by PRScope");
     });
 
     it("cuts at last newline for clean breaks", () => {

@@ -1,61 +1,63 @@
-import type { PrismConfig, ReviewProfile } from "./types.js";
+import type { ChatMessage, PRScopeConfig, PullRequestFile } from "./types.js";
 
-const PROFILE_INSTRUCTIONS: Record<ReviewProfile, string> = {
-    balanced:
-        "Review for bugs, security issues, performance problems, and code quality. Prioritize high-impact findings.",
-    security:
-        "Focus primarily on security vulnerabilities, injection risks, auth flaws, data exposure, and unsafe patterns. Still note critical bugs.",
-    performance:
-        "Focus primarily on performance bottlenecks, memory leaks, unnecessary allocations, N+1 queries, and algorithmic inefficiency. Still note critical bugs.",
-    strict:
-        "Apply maximum scrutiny. Flag all code quality issues including naming, structure, error handling, edge cases, type safety, and test coverage gaps. Be thorough.",
+const PROFILE_INSTRUCTIONS: Record<string, string> = {
+    balanced: "Review for bugs, security issues, performance problems, and code quality. Be thorough but practical.",
+    security: "Focus primarily on security vulnerabilities, injection risks, auth flaws, and data exposure. Be strict on security, lighter on style.",
+    performance: "Focus primarily on performance regressions, memory leaks, unnecessary allocations, and algorithmic inefficiency.",
+    strict: "Maximum scrutiny. Flag everything: bugs, security, performance, style, naming, documentation gaps. Miss nothing.",
 };
 
-export function buildSystemPrompt(config: PrismConfig): string {
-    const profileInstruction = PROFILE_INSTRUCTIONS[config.profile];
+export function buildPrompt(files: PullRequestFile[], config: PRScopeConfig): ChatMessage[] {
+    const profileInstructions = PROFILE_INSTRUCTIONS[config.profile] ?? PROFILE_INSTRUCTIONS.balanced;
 
-    return [
-        "You are PRism, an expert code reviewer. You analyze pull request diffs and produce structured, actionable feedback.",
+    const systemPrompt = [
+        "You are a senior code reviewer. You review pull request diffs and produce structured findings.",
         "",
-        `Review profile: ${config.profile.toUpperCase()}`,
-        profileInstruction,
+        `Review focus: ${profileInstructions}`,
         "",
-        "Rules:",
-        "- Be specific: reference exact file names and line numbers when possible.",
-        "- Be concise: no filler, no platitudes. Every finding must be actionable.",
-        "- Severity must reflect actual risk, not pedantic preference.",
-        '- Confidence (0-1) reflects how certain you are about each finding. Use < 0.6 for "might be an issue" and > 0.8 for "definitely wrong".',
-        "- Praise genuinely good patterns — developers deserve recognition.",
-        "- If the diff is trivial or looks fine, say so. Don't manufacture findings.",
-        "",
-        "You MUST respond with valid JSON matching this exact schema (no markdown fences, no extra text):",
+        "Respond ONLY with a valid JSON object matching this exact schema:",
         "",
         "{",
-        '  "summary": "One-paragraph summary of the PR changes and overall quality.",',
-        '  "overall_risk": "low" | "medium" | "high",',
+        '  "summary": "Brief overall assessment of the PR",',
+        '  "overall_risk": "low | medium | high",',
         '  "findings": [',
         "    {",
-        '      "file": "path/to/file.ts",',
+        '      "file": "path/to/file",',
         '      "line": 42,',
-        '      "severity": "low" | "medium" | "high",',
-        '      "category": "bug" | "security" | "performance" | "maintainability" | "dx",',
-        '      "title": "Short finding title",',
-        '      "message": "What the issue is and why it matters.",',
-        '      "suggestion": "Concrete fix or improvement.",',
-        '      "confidence": 0.85',
+        '      "severity": "low | medium | high",',
+        '      "category": "bug | security | performance | maintainability | dx",',
+        '      "title": "Short title",',
+        '      "message": "Detailed explanation",',
+        '      "suggestion": "How to fix it",',
+        '      "confidence": 0.92',
         "    }",
         "  ],",
-        '  "praise": ["Genuinely good patterns worth calling out."]',
+        '  "praise": ["Good things about this PR"]',
         "}",
+        "",
+        "Rules:",
+        "- Output ONLY the JSON object, no markdown fences, no commentary.",
+        "- Set confidence between 0 and 1. Only flag findings where confidence > 0.7.",
+        "- If the diff looks clean, return an empty findings array.",
+        "- Be specific about line numbers when possible.",
+        "- Do not hallucinate files or line numbers that are not in the diff.",
     ].join("\n");
-}
 
-export function buildUserPrompt(diffBlock: string): string {
-    return [
-        "Review the following pull request diff and respond with the JSON schema described above.",
+    const diffContent = files
+        .map((f) => {
+            const patch = f.patch ?? "[binary or context unavailable]";
+            return `--- ${f.filename} (${f.status}) ---\n${patch}`;
+        })
+        .join("\n\n");
+
+    const userPrompt = [
+        `Review the following pull request diff (${files.length} files):`,
         "",
-        "---",
-        "",
-        diffBlock,
+        diffContent,
     ].join("\n");
+
+    return [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: userPrompt },
+    ];
 }

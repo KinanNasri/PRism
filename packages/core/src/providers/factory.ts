@@ -1,11 +1,12 @@
-import type { ChatProvider, PrismConfig } from "../types.js";
+import type { PRScopeConfig } from "../types.js";
 import { createOpenAIProvider } from "./openai.js";
 import { createAnthropicProvider } from "./anthropic.js";
 import { createOpenAICompatProvider } from "./openai-compat.js";
 import { createOllamaProvider } from "./ollama.js";
+import type { ChatProvider } from "./types.js";
 
-export function createProvider(config: PrismConfig): ChatProvider {
-    const apiKey = resolveApiKey(config.apiKeyEnv);
+export function createProvider(config: PRScopeConfig): ChatProvider {
+    const apiKey = process.env[config.apiKeyEnv] ?? "";
 
     switch (config.provider) {
         case "openai":
@@ -22,12 +23,9 @@ export function createProvider(config: PrismConfig): ChatProvider {
             });
 
         case "openai-compat":
-            if (!config.baseUrl) {
-                throw new Error("baseUrl is required for openai-compat provider");
-            }
             return createOpenAICompatProvider({
                 apiKey,
-                baseUrl: config.baseUrl,
+                baseUrl: config.baseUrl ?? "http://localhost:1234",
                 model: config.model,
             });
 
@@ -42,16 +40,4 @@ export function createProvider(config: PrismConfig): ChatProvider {
             throw new Error(`Unknown provider: ${_exhaustive}`);
         }
     }
-}
-
-function resolveApiKey(envVarName: string): string {
-    const value = process.env[envVarName];
-
-    if (!value && envVarName !== "OLLAMA_HOST") {
-        throw new Error(
-            `Missing API key: environment variable "${envVarName}" is not set.`,
-        );
-    }
-
-    return value ?? "";
 }

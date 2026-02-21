@@ -22,23 +22,21 @@ describe("parseReviewResult", () => {
 
     it("parses valid review result", () => {
         const result = parseReviewResult(validResult);
-        expect(result).not.toBeNull();
-        expect(result!.summary).toBe("This PR adds a new utility function.");
-        expect(result!.overall_risk).toBe("low");
-        expect(result!.findings).toHaveLength(1);
-        expect(result!.praise).toHaveLength(1);
+        expect(result.summary).toBe("This PR adds a new utility function.");
+        expect(result.overall_risk).toBe("low");
+        expect(result.findings).toHaveLength(1);
+        expect(result.praise).toHaveLength(1);
     });
 
     it("accepts null line numbers", () => {
         const withNullLine = { ...validResult, findings: [{ ...validResult.findings[0]!, line: null }] };
         const result = parseReviewResult(withNullLine);
-        expect(result).not.toBeNull();
-        expect(result!.findings[0]!.line).toBeNull();
+        expect(result.findings[0]!.line).toBeNull();
     });
 
     it("rejects invalid risk level", () => {
         const invalid = { ...validResult, overall_risk: "extreme" };
-        expect(parseReviewResult(invalid)).toBeNull();
+        expect(() => parseReviewResult(invalid)).toThrow();
     });
 
     it("rejects invalid severity", () => {
@@ -46,7 +44,7 @@ describe("parseReviewResult", () => {
             ...validResult,
             findings: [{ ...validResult.findings[0]!, severity: "critical" }],
         };
-        expect(parseReviewResult(invalid)).toBeNull();
+        expect(() => parseReviewResult(invalid)).toThrow();
     });
 
     it("rejects confidence out of range", () => {
@@ -54,22 +52,21 @@ describe("parseReviewResult", () => {
             ...validResult,
             findings: [{ ...validResult.findings[0]!, confidence: 1.5 }],
         };
-        expect(parseReviewResult(invalid)).toBeNull();
+        expect(() => parseReviewResult(invalid)).toThrow();
     });
 
-    it("returns null for complete garbage", () => {
-        expect(parseReviewResult("not json")).toBeNull();
-        expect(parseReviewResult(42)).toBeNull();
-        expect(parseReviewResult(null)).toBeNull();
-        expect(parseReviewResult(undefined)).toBeNull();
+    it("rejects complete garbage", () => {
+        expect(() => parseReviewResult("not json")).toThrow();
+        expect(() => parseReviewResult(42)).toThrow();
+        expect(() => parseReviewResult(null)).toThrow();
+        expect(() => parseReviewResult(undefined)).toThrow();
     });
 
     it("accepts empty findings and praise", () => {
         const minimal = { summary: "All good.", overall_risk: "low", findings: [], praise: [] };
         const result = parseReviewResult(minimal);
-        expect(result).not.toBeNull();
-        expect(result!.findings).toHaveLength(0);
-        expect(result!.praise).toHaveLength(0);
+        expect(result.findings).toHaveLength(0);
+        expect(result.praise).toHaveLength(0);
     });
 });
 

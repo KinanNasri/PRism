@@ -1,12 +1,12 @@
-import type { PrismConfig } from "prism-core";
+import type { PRScopeConfig } from "prscope-core";
 
 export function generateWorkflow(options: {
-  provider: PrismConfig["provider"];
+  provider: PRScopeConfig["provider"];
   apiKeyEnv: string;
 }): string {
-  const secretName = options.apiKeyEnv.replace(/_/g, "_");
+  const secretName = options.apiKeyEnv;
 
-  return `name: PRism Review
+  return `name: PRScope Review
 
 on:
   pull_request:
@@ -18,17 +18,17 @@ permissions:
 
 jobs:
   review:
-    name: PRism
+    name: PRScope
     runs-on: ubuntu-latest
     if: \${{ !github.event.pull_request.draft }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run PRism
-        uses: ./packages/action
+      - name: Run PRScope
+        uses: KinanNasri/PRScope@main
         with:
-          config_path: prism.config.json
+          config_path: prscope.config.json
         env:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
           ${secretName}: \${{ secrets.${secretName} }}

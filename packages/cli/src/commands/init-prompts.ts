@@ -1,5 +1,5 @@
 import { select, input, search, confirm, password } from "@inquirer/prompts";
-import type { ProviderType, ReviewProfile, CommentMode, ModelInfo } from "prism-core";
+import type { ProviderType, ReviewProfile, CommentMode, ModelInfo } from "prscope-core";
 
 const OPENAI_MODELS: ModelInfo[] = [
     { id: "gpt-4.1", name: "GPT-4.1" },
@@ -37,6 +37,7 @@ export function getFallbackModels(provider: ProviderType): ModelInfo[] {
         case "anthropic": return ANTHROPIC_MODELS;
         case "ollama": return OLLAMA_MODELS;
         case "openai-compat": return [];
+        default: return [];
     }
 }
 
@@ -52,36 +53,13 @@ export async function askProvider(): Promise<ProviderType> {
     });
 }
 
-export async function askApiKeyEnv(provider: ProviderType): Promise<string> {
-    const defaults: Record<ProviderType, string> = {
-        openai: "OPENAI_API_KEY",
-        anthropic: "ANTHROPIC_API_KEY",
-        "openai-compat": "LLM_API_KEY",
-        ollama: "OLLAMA_HOST",
-    };
-
-    return input({
-        message: "Environment variable name for your API key:",
-        default: defaults[provider],
-    });
-}
-
-export async function askApiKeyForFetch(provider: ProviderType, apiKeyEnv: string): Promise<string> {
+export async function askApiKey(provider: ProviderType): Promise<string> {
     if (provider === "ollama") return "";
 
-    const existing = process.env[apiKeyEnv];
-    if (existing) return existing;
-
-    const wantsFetch = await confirm({
-        message: "Provide your API key now to auto-detect available models?",
-        default: true,
-    });
-
-    if (!wantsFetch) return "";
-
     return password({
-        message: "API key (used only for model detection, not stored):",
+        message: "Paste your API key (stored locally in .env, never committed):",
         mask: "*",
+        validate: (v) => (v.trim().length > 0 ? true : "API key is required"),
     });
 }
 

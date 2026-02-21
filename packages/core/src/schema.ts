@@ -1,47 +1,41 @@
 import { z } from "zod";
-
-const SeveritySchema = z.enum(["low", "medium", "high"]);
-const RiskLevelSchema = z.enum(["low", "medium", "high"]);
-const CategorySchema = z.enum(["bug", "security", "performance", "maintainability", "dx"]);
-const ProviderTypeSchema = z.enum(["openai", "anthropic", "openai-compat", "ollama"]);
-const ReviewProfileSchema = z.enum(["balanced", "security", "performance", "strict"]);
-const CommentModeSchema = z.enum(["summary-only", "inline+summary"]);
-
-export const FindingSchema = z.object({
-    file: z.string(),
-    line: z.number().nullable(),
-    severity: SeveritySchema,
-    category: CategorySchema,
-    title: z.string(),
-    message: z.string(),
-    suggestion: z.string(),
-    confidence: z.number().min(0).max(1),
-});
+import type { PRScopeConfig, ReviewResult } from "./types.js";
+import { DEFAULT_CONFIG } from "./types.js";
 
 export const ReviewResultSchema = z.object({
-    summary: z.string(),
-    overall_risk: RiskLevelSchema,
-    findings: z.array(FindingSchema),
+    summary: z.string().min(1),
+    overall_risk: z.enum(["low", "medium", "high"]),
+    findings: z.array(
+        z.object({
+            file: z.string(),
+            line: z.number().nullable(),
+            severity: z.enum(["low", "medium", "high"]),
+            category: z.enum(["bug", "security", "performance", "maintainability", "dx"]),
+            title: z.string().min(1),
+            message: z.string().min(1),
+            suggestion: z.string().default(""),
+            confidence: z.number().min(0).max(1),
+        }),
+    ),
     praise: z.array(z.string()),
 });
 
-export const PrismConfigSchema = z.object({
-    provider: ProviderTypeSchema,
+export const PRScopeConfigSchema = z.object({
+    provider: z.enum(["openai", "anthropic", "openai-compat", "ollama"]),
     model: z.string().min(1),
     apiKeyEnv: z.string().min(1),
-    baseUrl: z.string().url().optional(),
-    profile: ReviewProfileSchema.default("balanced"),
-    commentMode: CommentModeSchema.default("summary-only"),
-    maxFiles: z.number().int().positive().default(30),
-    maxDiffBytes: z.number().int().positive().default(100_000),
+    baseUrl: z.string().optional(),
+    profile: z.enum(["balanced", "security", "performance", "strict"]).default("balanced"),
+    commentMode: z.enum(["summary-only", "inline+summary"]).default("summary-only"),
+    maxFiles: z.number().int().positive().default(DEFAULT_CONFIG.maxFiles),
+    maxDiffBytes: z.number().int().positive().default(DEFAULT_CONFIG.maxDiffBytes),
     configPath: z.string().optional(),
 });
 
-export function parseReviewResult(raw: unknown): z.infer<typeof ReviewResultSchema> | null {
-    const result = ReviewResultSchema.safeParse(raw);
-    return result.success ? result.data : null;
+export function parseReviewResult(data: unknown): ReviewResult {
+    return ReviewResultSchema.parse(data);
 }
 
-export function parseConfig(raw: unknown): z.infer<typeof PrismConfigSchema> {
-    return PrismConfigSchema.parse(raw);
+export function parseConfig(data: unknown): PRScopeConfig {
+    return PRScopeConfigSchema.parse(data);
 }

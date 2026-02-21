@@ -4072,11 +4072,10 @@ var coerce = {
 var NEVER = INVALID;
 
 // ../core/dist/index.js
-var import_crypto = require("crypto");
 var import_promises = require("fs/promises");
 var import_path = require("path");
-var PRISM_COMMENT_MARKER = "<!-- prism:review -->";
-var CONFIG_FILENAMES = ["prism.config.json", ".prismrc.json"];
+var PRSCOPE_COMMENT_MARKER = "<!-- prscope:review -->";
+var CONFIG_FILENAMES = ["prscope.config.json", ".prscopeRC.json"];
 var DEFAULT_CONFIG = {
   profile: "balanced",
   commentMode: "summary-only",
@@ -4109,7 +4108,60 @@ var NOISE_PATTERNS = [
   /\.webp$/,
   /\.avif$/
 ];
-var TRUNCATION_MARKER = "\n... [TRUNCATED by PRism \u2014 diff too large] ...\n";
+var ReviewResultSchema = external_exports.object({
+  summary: external_exports.string().min(1),
+  overall_risk: external_exports.enum(["low", "medium", "high"]),
+  findings: external_exports.array(
+    external_exports.object({
+      file: external_exports.string(),
+      line: external_exports.number().nullable(),
+      severity: external_exports.enum(["low", "medium", "high"]),
+      category: external_exports.enum(["bug", "security", "performance", "maintainability", "dx"]),
+      title: external_exports.string().min(1),
+      message: external_exports.string().min(1),
+      suggestion: external_exports.string().default(""),
+      confidence: external_exports.number().min(0).max(1)
+    })
+  ),
+  praise: external_exports.array(external_exports.string())
+});
+var PRScopeConfigSchema = external_exports.object({
+  provider: external_exports.enum(["openai", "anthropic", "openai-compat", "ollama"]),
+  model: external_exports.string().min(1),
+  apiKeyEnv: external_exports.string().min(1),
+  baseUrl: external_exports.string().optional(),
+  profile: external_exports.enum(["balanced", "security", "performance", "strict"]).default("balanced"),
+  commentMode: external_exports.enum(["summary-only", "inline+summary"]).default("summary-only"),
+  maxFiles: external_exports.number().int().positive().default(DEFAULT_CONFIG.maxFiles),
+  maxDiffBytes: external_exports.number().int().positive().default(DEFAULT_CONFIG.maxDiffBytes),
+  configPath: external_exports.string().optional()
+});
+function parseReviewResult(data) {
+  return ReviewResultSchema.parse(data);
+}
+function parseConfig(data) {
+  return PRScopeConfigSchema.parse(data);
+}
+async function loadConfig(cwd = process.cwd()) {
+  for (const filename of CONFIG_FILENAMES) {
+    const filepath = (0, import_path.resolve)(cwd, filename);
+    try {
+      const raw = await (0, import_promises.readFile)(filepath, "utf-8");
+      const parsed = JSON.parse(raw);
+      return parseConfig(parsed);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(
+    `No config found. Run \`npx prscope init\` or create ${CONFIG_FILENAMES.join(" / ")} in your project root.`
+  );
+}
+function resolveConfig(overrides, base) {
+  const merged = { ...DEFAULT_CONFIG, ...base, ...overrides };
+  return parseConfig(merged);
+}
+var TRUNCATION_MARKER = "\n... [TRUNCATED by PRScope \u2014 diff too large] ...\n";
 function isNoiseFile(filename) {
   return NOISE_PATTERNS.some((pattern) => pattern.test(filename));
 }
@@ -4137,220 +4189,60 @@ function prepareDiffs(files, maxFiles, maxDiffBytes) {
   });
   return { filtered: prepared, totalBytes };
 }
-function buildDiffBlock(files) {
-  return files.map((f) => {
-    const header = `### ${f.filename} (${f.status}) [+${f.additions} / -${f.deletions}]`;
-    const patch = f.patch ?? "[context unavailable]";
-    return `${header}
-\`\`\`diff
-${patch}
-\`\`\``;
-  }).join("\n\n");
-}
 var PROFILE_INSTRUCTIONS = {
-  balanced: "Review for bugs, security issues, performance problems, and code quality. Prioritize high-impact findings.",
-  security: "Focus primarily on security vulnerabilities, injection risks, auth flaws, data exposure, and unsafe patterns. Still note critical bugs.",
-  performance: "Focus primarily on performance bottlenecks, memory leaks, unnecessary allocations, N+1 queries, and algorithmic inefficiency. Still note critical bugs.",
-  strict: "Apply maximum scrutiny. Flag all code quality issues including naming, structure, error handling, edge cases, type safety, and test coverage gaps. Be thorough."
+  balanced: "Review for bugs, security issues, performance problems, and code quality. Be thorough but practical.",
+  security: "Focus primarily on security vulnerabilities, injection risks, auth flaws, and data exposure. Be strict on security, lighter on style.",
+  performance: "Focus primarily on performance regressions, memory leaks, unnecessary allocations, and algorithmic inefficiency.",
+  strict: "Maximum scrutiny. Flag everything: bugs, security, performance, style, naming, documentation gaps. Miss nothing."
 };
-function buildSystemPrompt(config) {
-  const profileInstruction = PROFILE_INSTRUCTIONS[config.profile];
-  return [
-    "You are PRism, an expert code reviewer. You analyze pull request diffs and produce structured, actionable feedback.",
+function buildPrompt(files, config) {
+  const profileInstructions = PROFILE_INSTRUCTIONS[config.profile] ?? PROFILE_INSTRUCTIONS.balanced;
+  const systemPrompt = [
+    "You are a senior code reviewer. You review pull request diffs and produce structured findings.",
     "",
-    `Review profile: ${config.profile.toUpperCase()}`,
-    profileInstruction,
+    `Review focus: ${profileInstructions}`,
     "",
-    "Rules:",
-    "- Be specific: reference exact file names and line numbers when possible.",
-    "- Be concise: no filler, no platitudes. Every finding must be actionable.",
-    "- Severity must reflect actual risk, not pedantic preference.",
-    '- Confidence (0-1) reflects how certain you are about each finding. Use < 0.6 for "might be an issue" and > 0.8 for "definitely wrong".',
-    "- Praise genuinely good patterns \u2014 developers deserve recognition.",
-    "- If the diff is trivial or looks fine, say so. Don't manufacture findings.",
-    "",
-    "You MUST respond with valid JSON matching this exact schema (no markdown fences, no extra text):",
+    "Respond ONLY with a valid JSON object matching this exact schema:",
     "",
     "{",
-    '  "summary": "One-paragraph summary of the PR changes and overall quality.",',
-    '  "overall_risk": "low" | "medium" | "high",',
+    '  "summary": "Brief overall assessment of the PR",',
+    '  "overall_risk": "low | medium | high",',
     '  "findings": [',
     "    {",
-    '      "file": "path/to/file.ts",',
+    '      "file": "path/to/file",',
     '      "line": 42,',
-    '      "severity": "low" | "medium" | "high",',
-    '      "category": "bug" | "security" | "performance" | "maintainability" | "dx",',
-    '      "title": "Short finding title",',
-    '      "message": "What the issue is and why it matters.",',
-    '      "suggestion": "Concrete fix or improvement.",',
-    '      "confidence": 0.85',
+    '      "severity": "low | medium | high",',
+    '      "category": "bug | security | performance | maintainability | dx",',
+    '      "title": "Short title",',
+    '      "message": "Detailed explanation",',
+    '      "suggestion": "How to fix it",',
+    '      "confidence": 0.92',
     "    }",
     "  ],",
-    '  "praise": ["Genuinely good patterns worth calling out."]',
-    "}"
+    '  "praise": ["Good things about this PR"]',
+    "}",
+    "",
+    "Rules:",
+    "- Output ONLY the JSON object, no markdown fences, no commentary.",
+    "- Set confidence between 0 and 1. Only flag findings where confidence > 0.7.",
+    "- If the diff looks clean, return an empty findings array.",
+    "- Be specific about line numbers when possible.",
+    "- Do not hallucinate files or line numbers that are not in the diff."
   ].join("\n");
-}
-function buildUserPrompt(diffBlock) {
+  const diffContent = files.map((f) => {
+    const patch = f.patch ?? "[binary or context unavailable]";
+    return `--- ${f.filename} (${f.status}) ---
+${patch}`;
+  }).join("\n\n");
+  const userPrompt = [
+    `Review the following pull request diff (${files.length} files):`,
+    "",
+    diffContent
+  ].join("\n");
   return [
-    "Review the following pull request diff and respond with the JSON schema described above.",
-    "",
-    "---",
-    "",
-    diffBlock
-  ].join("\n");
-}
-var SeveritySchema = external_exports.enum(["low", "medium", "high"]);
-var RiskLevelSchema = external_exports.enum(["low", "medium", "high"]);
-var CategorySchema = external_exports.enum(["bug", "security", "performance", "maintainability", "dx"]);
-var ProviderTypeSchema = external_exports.enum(["openai", "anthropic", "openai-compat", "ollama"]);
-var ReviewProfileSchema = external_exports.enum(["balanced", "security", "performance", "strict"]);
-var CommentModeSchema = external_exports.enum(["summary-only", "inline+summary"]);
-var FindingSchema = external_exports.object({
-  file: external_exports.string(),
-  line: external_exports.number().nullable(),
-  severity: SeveritySchema,
-  category: CategorySchema,
-  title: external_exports.string(),
-  message: external_exports.string(),
-  suggestion: external_exports.string(),
-  confidence: external_exports.number().min(0).max(1)
-});
-var ReviewResultSchema = external_exports.object({
-  summary: external_exports.string(),
-  overall_risk: RiskLevelSchema,
-  findings: external_exports.array(FindingSchema),
-  praise: external_exports.array(external_exports.string())
-});
-var PrismConfigSchema = external_exports.object({
-  provider: ProviderTypeSchema,
-  model: external_exports.string().min(1),
-  apiKeyEnv: external_exports.string().min(1),
-  baseUrl: external_exports.string().url().optional(),
-  profile: ReviewProfileSchema.default("balanced"),
-  commentMode: CommentModeSchema.default("summary-only"),
-  maxFiles: external_exports.number().int().positive().default(30),
-  maxDiffBytes: external_exports.number().int().positive().default(1e5),
-  configPath: external_exports.string().optional()
-});
-function parseReviewResult(raw) {
-  const result = ReviewResultSchema.safeParse(raw);
-  return result.success ? result.data : null;
-}
-function parseConfig(raw) {
-  return PrismConfigSchema.parse(raw);
-}
-var RISK_LABELS = {
-  low: "Low Risk",
-  medium: "Medium Risk",
-  high: "High Risk"
-};
-var SEVERITY_LABELS = {
-  high: "High",
-  medium: "Medium",
-  low: "Low"
-};
-var CATEGORY_LABELS = {
-  bug: "Bug",
-  security: "Security",
-  performance: "Performance",
-  maintainability: "Maintainability",
-  dx: "Developer Experience"
-};
-function riskIndicator(risk) {
-  const dots = {
-    low: "`LOW`",
-    medium: "`MEDIUM`",
-    high: "`HIGH`"
-  };
-  return dots[risk];
-}
-function renderFindingsTable(findings) {
-  if (findings.length === 0) return "*No issues found \u2014 this PR looks good.*\n";
-  const sorted = [...findings].sort((a, b) => {
-    const order = { high: 0, medium: 1, low: 2 };
-    return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
-  });
-  const rows = sorted.map((f) => {
-    const severity = SEVERITY_LABELS[f.severity] ?? f.severity;
-    const category = CATEGORY_LABELS[f.category] ?? f.category;
-    const location = f.line ? `\`${f.file}:${f.line}\`` : `\`${f.file}\``;
-    return `| ${severity} | ${category} | ${f.title} | ${location} |`;
-  });
-  return [
-    "| Severity | Category | Finding | Location |",
-    "|----------|----------|---------|----------|",
-    ...rows,
-    ""
-  ].join("\n");
-}
-function renderFindingDetails(findings) {
-  if (findings.length === 0) return "";
-  const details = findings.map((f) => {
-    const location = f.line ? `${f.file}:${f.line}` : f.file;
-    return [
-      `#### ${f.title}`,
-      `**Location:** \`${location}\` \u2014 **Confidence:** ${Math.round(f.confidence * 100)}%`,
-      "",
-      f.message,
-      "",
-      f.suggestion ? `> **Suggestion:** ${f.suggestion}` : ""
-    ].filter(Boolean).join("\n");
-  });
-  return [
-    "<details>",
-    "<summary>Detailed findings</summary>",
-    "",
-    ...details,
-    "",
-    "</details>",
-    ""
-  ].join("\n");
-}
-function renderPraise(praise) {
-  if (praise.length === 0) return "";
-  const items = praise.map((p) => `- ${p}`).join("\n");
-  return ["<details>", "<summary>What looks good</summary>", "", items, "", "</details>", ""].join("\n");
-}
-function renderComment(result) {
-  const badge = RISK_LABELS[result.overall_risk];
-  const indicator = riskIndicator(result.overall_risk);
-  return [
-    PRISM_COMMENT_MARKER,
-    "",
-    `## PRism Review \u2014 ${badge} ${indicator}`,
-    "",
-    result.summary,
-    "",
-    "---",
-    "",
-    "### Findings",
-    "",
-    renderFindingsTable(result.findings),
-    renderFindingDetails(result.findings),
-    renderPraise(result.praise),
-    "---",
-    "",
-    '<sub>Powered by <a href="https://github.com/KinanNasri/PRism">PRism</a> \u2014 see through your pull requests.</sub>',
-    ""
-  ].join("\n");
-}
-function renderFallbackComment(error) {
-  return [
-    PRISM_COMMENT_MARKER,
-    "",
-    "## PRism Review",
-    "",
-    "PRism could not produce a structured review for this PR.",
-    "",
-    `**Reason:** ${error}`,
-    "",
-    "The model response did not match the expected schema. This can happen with very large diffs or provider-specific formatting quirks. The PR was still analyzed \u2014 try re-running the workflow.",
-    "",
-    "---",
-    "",
-    '<sub>Powered by <a href="https://github.com/KinanNasri/PRism">PRism</a></sub>',
-    ""
-  ].join("\n");
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ];
 }
 var DEFAULT_RETRY_OPTIONS = {
   maxRetries: 3,
@@ -4587,7 +4479,7 @@ function createOllamaProvider(config) {
   };
 }
 function createProvider(config) {
-  const apiKey = resolveApiKey(config.apiKeyEnv);
+  const apiKey = process.env[config.apiKeyEnv] ?? "";
   switch (config.provider) {
     case "openai":
       return createOpenAIProvider({
@@ -4601,12 +4493,9 @@ function createProvider(config) {
         model: config.model
       });
     case "openai-compat":
-      if (!config.baseUrl) {
-        throw new Error("baseUrl is required for openai-compat provider");
-      }
       return createOpenAICompatProvider({
         apiKey,
-        baseUrl: config.baseUrl,
+        baseUrl: config.baseUrl ?? "http://localhost:1234",
         model: config.model
       });
     case "ollama":
@@ -4620,107 +4509,170 @@ function createProvider(config) {
     }
   }
 }
-function resolveApiKey(envVarName) {
-  const value = process.env[envVarName];
-  if (!value && envVarName !== "OLLAMA_HOST") {
-    throw new Error(
-      `Missing API key: environment variable "${envVarName}" is not set.`
-    );
-  }
-  return value ?? "";
+var RISK_LABELS = {
+  low: "Low Risk",
+  medium: "Medium Risk",
+  high: "High Risk"
+};
+var SEVERITY_LABELS = {
+  high: "High",
+  medium: "Medium",
+  low: "Low"
+};
+var CATEGORY_LABELS = {
+  bug: "Bug",
+  security: "Security",
+  performance: "Performance",
+  maintainability: "Maintainability",
+  dx: "Developer Experience"
+};
+function riskIndicator(risk) {
+  const dots = {
+    low: "`LOW`",
+    medium: "`MEDIUM`",
+    high: "`HIGH`"
+  };
+  return dots[risk];
 }
-function computeReviewHash(diffContent, config) {
-  const input = JSON.stringify({
-    diff: diffContent,
-    model: config.model,
-    provider: config.provider,
-    profile: config.profile
+function renderFindingsTable(findings) {
+  if (findings.length === 0) return "*No issues found \u2014 this PR looks good.*\n";
+  const sorted = [...findings].sort((a, b) => {
+    const order = { high: 0, medium: 1, low: 2 };
+    return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
   });
-  return (0, import_crypto.createHash)("sha256").update(input).digest("hex").slice(0, 16);
+  const rows = sorted.map((f) => {
+    const severity = SEVERITY_LABELS[f.severity] ?? f.severity;
+    const category = CATEGORY_LABELS[f.category] ?? f.category;
+    const location = f.line ? `\`${f.file}:${f.line}\`` : `\`${f.file}\``;
+    return `| ${severity} | ${category} | ${f.title} | ${location} |`;
+  });
+  return [
+    "| Severity | Category | Finding | Location |",
+    "|----------|----------|---------|----------|",
+    ...rows,
+    ""
+  ].join("\n");
+}
+function renderFindingDetails(findings) {
+  if (findings.length === 0) return "";
+  const details = findings.map((f) => {
+    const location = f.line ? `${f.file}:${f.line}` : f.file;
+    return [
+      `#### ${f.title}`,
+      `**Location:** \`${location}\` \u2014 **Confidence:** ${Math.round(f.confidence * 100)}%`,
+      "",
+      f.message,
+      "",
+      f.suggestion ? `> **Suggestion:** ${f.suggestion}` : ""
+    ].filter(Boolean).join("\n");
+  });
+  return [
+    "<details>",
+    "<summary>Detailed findings</summary>",
+    "",
+    ...details,
+    "",
+    "</details>",
+    ""
+  ].join("\n");
+}
+function renderPraise(praise) {
+  if (praise.length === 0) return "";
+  const items = praise.map((p) => `- ${p}`).join("\n");
+  return ["<details>", "<summary>What looks good</summary>", "", items, "", "</details>", ""].join("\n");
+}
+function renderComment(result) {
+  const badge = RISK_LABELS[result.overall_risk];
+  const indicator = riskIndicator(result.overall_risk);
+  return [
+    PRSCOPE_COMMENT_MARKER,
+    "",
+    `## PRScope Review \u2014 ${badge} ${indicator}`,
+    "",
+    result.summary,
+    "",
+    "---",
+    "",
+    "### Findings",
+    "",
+    renderFindingsTable(result.findings),
+    renderFindingDetails(result.findings),
+    renderPraise(result.praise),
+    "---",
+    "",
+    '<sub>Powered by <a href="https://github.com/KinanNasri/PRScope">PRScope</a></sub>',
+    ""
+  ].join("\n");
+}
+function renderFallbackComment(error) {
+  return [
+    PRSCOPE_COMMENT_MARKER,
+    "",
+    "## PRScope Review",
+    "",
+    "PRScope could not produce a structured review for this PR.",
+    "",
+    `**Reason:** ${error}`,
+    "",
+    "The model response did not match the expected schema. This can happen with very large diffs or provider-specific formatting quirks. The PR was still analyzed \u2014 try re-running the workflow.",
+    "",
+    "---",
+    "",
+    '<sub>Powered by <a href="https://github.com/KinanNasri/PRScope">PRScope</a></sub>',
+    ""
+  ].join("\n");
 }
 async function runReview(config, files) {
-  const { filtered, totalBytes } = prepareDiffs(files, config.maxFiles, config.maxDiffBytes);
-  const truncated = totalBytes >= config.maxDiffBytes;
-  if (filtered.length === 0) {
-    const fallback = {
-      summary: "No reviewable files found in this PR \u2014 all changes are in generated, binary, or dependency files.",
+  if (files.length === 0) {
+    return renderComment({
+      summary: "This PR has no reviewable file changes.",
       overall_risk: "low",
       findings: [],
       praise: []
-    };
-    return {
-      comment: renderComment(fallback),
-      review: fallback,
-      hash: computeReviewHash("empty", config),
-      truncated: false
-    };
+    });
   }
-  const diffBlock = buildDiffBlock(filtered);
-  const hash = computeReviewHash(diffBlock, config);
+  const { filtered } = prepareDiffs(files, config.maxFiles, config.maxDiffBytes);
+  if (filtered.length === 0) {
+    return renderComment({
+      summary: "All changed files were filtered out (lockfiles, build artifacts, binaries). Nothing to review.",
+      overall_risk: "low",
+      findings: [],
+      praise: []
+    });
+  }
   const provider = createProvider(config);
-  const systemPrompt = buildSystemPrompt(config);
-  const userPrompt = buildUserPrompt(diffBlock);
-  const rawResponse = await provider.chat([
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt }
-  ]);
-  const parsed = extractAndParseJson(rawResponse);
-  const review = parseReviewResult(parsed);
-  if (!review) {
-    return {
-      comment: renderFallbackComment("Could not parse structured output from the model."),
-      review: null,
-      hash,
-      truncated
-    };
-  }
-  return {
-    comment: renderComment(review),
-    review,
-    hash,
-    truncated
-  };
-}
-function extractAndParseJson(raw) {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  const toParse = fenced ? fenced[1] : trimmed;
+  const messages = buildPrompt(filtered, config);
+  const raw = await provider.chat(messages);
   try {
-    return JSON.parse(toParse);
-  } catch {
-    return null;
+    const cleaned = extractJson(raw);
+    const result = parseReviewResult(JSON.parse(cleaned));
+    return renderComment(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return renderFallbackComment(`Schema validation failed: ${message}`);
   }
 }
-async function loadConfig(cwd = process.cwd()) {
-  for (const filename of CONFIG_FILENAMES) {
-    const filepath = (0, import_path.resolve)(cwd, filename);
-    try {
-      const raw = await (0, import_promises.readFile)(filepath, "utf-8");
-      const parsed = JSON.parse(raw);
-      return parseConfig(parsed);
-    } catch {
-      continue;
-    }
+function extractJson(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced?.[1]) return fenced[1].trim();
+  const braceStart = text.indexOf("{");
+  const braceEnd = text.lastIndexOf("}");
+  if (braceStart !== -1 && braceEnd > braceStart) {
+    return text.slice(braceStart, braceEnd + 1);
   }
-  throw new Error(
-    `No PRism config found. Run \`npx prism init\` or create ${CONFIG_FILENAMES.join(" / ")} in your project root.`
-  );
-}
-function resolveConfig(overrides, base) {
-  const merged = { ...DEFAULT_CONFIG, ...base, ...overrides };
-  return parseConfig(merged);
+  return text.trim();
 }
 
 // src/github.ts
 var github = __toESM(require("@actions/github"), 1);
 function getPullRequestContext() {
-  const { context } = github;
-  const pr = context.payload.pull_request;
-  if (!pr) return null;
+  const payload = github.context.payload;
+  const pr = payload.pull_request;
+  if (!pr) throw new Error("This action must run on pull_request events.");
   return {
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pullNumber: pr.number
+    owner: github.context.repo.owner,
+    repo: github.context.repo.repo,
+    number: pr.number
   };
 }
 async function fetchPullRequestFiles(octokit, ctx) {
@@ -4730,7 +4682,7 @@ async function fetchPullRequestFiles(octokit, ctx) {
     const { data } = await octokit.rest.pulls.listFiles({
       owner: ctx.owner,
       repo: ctx.repo,
-      pull_number: ctx.pullNumber,
+      pull_number: ctx.number,
       per_page: 100,
       page
     });
@@ -4738,7 +4690,17 @@ async function fetchPullRequestFiles(octokit, ctx) {
     for (const file of data) {
       let patch = file.patch;
       if (!patch && file.status !== "removed") {
-        patch = await fetchRawPatch(octokit, ctx, file.filename);
+        try {
+          const { data: rawDiff } = await octokit.rest.pulls.get({
+            owner: ctx.owner,
+            repo: ctx.repo,
+            pull_number: ctx.number,
+            mediaType: { format: "diff" }
+          });
+          patch = typeof rawDiff === "string" ? rawDiff : void 0;
+        } catch {
+          patch = void 0;
+        }
       }
       files.push({
         filename: file.filename,
@@ -4754,49 +4716,29 @@ async function fetchPullRequestFiles(octokit, ctx) {
   }
   return files;
 }
-async function fetchRawPatch(octokit, ctx, _filename) {
-  try {
-    const { data } = await octokit.rest.pulls.get({
-      owner: ctx.owner,
-      repo: ctx.repo,
-      pull_number: ctx.pullNumber,
-      mediaType: { format: "diff" }
-    });
-    const diffText = data;
-    return diffText || void 0;
-  } catch {
-    return void 0;
-  }
-}
-async function findExistingComment(octokit, ctx) {
+async function upsertComment(octokit, ctx, body) {
   const { data: comments } = await octokit.rest.issues.listComments({
     owner: ctx.owner,
     repo: ctx.repo,
-    issue_number: ctx.pullNumber,
+    issue_number: ctx.number,
     per_page: 100
   });
   const botLogin = await getBotLogin(octokit);
-  const existing = comments.find((c) => {
-    const isMarked = c.body?.includes(PRISM_COMMENT_MARKER);
-    const isBot = botLogin ? c.user?.login === botLogin : true;
-    return isMarked && isBot;
-  });
-  return existing?.id ?? null;
-}
-async function upsertComment(octokit, ctx, body) {
-  const existingId = await findExistingComment(octokit, ctx);
-  if (existingId) {
+  const existing = comments.find(
+    (c) => c.body?.includes(PRSCOPE_COMMENT_MARKER) && c.user?.login === botLogin
+  );
+  if (existing) {
     await octokit.rest.issues.updateComment({
       owner: ctx.owner,
       repo: ctx.repo,
-      comment_id: existingId,
+      comment_id: existing.id,
       body
     });
   } else {
     await octokit.rest.issues.createComment({
       owner: ctx.owner,
       repo: ctx.repo,
-      issue_number: ctx.pullNumber,
+      issue_number: ctx.number,
       body
     });
   }
@@ -4806,77 +4748,60 @@ async function getBotLogin(octokit) {
     const { data } = await octokit.rest.users.getAuthenticated();
     return data.login;
   } catch {
-    return null;
+    return "github-actions[bot]";
   }
 }
 
 // src/index.ts
 async function run() {
-  const ctx = getPullRequestContext();
-  if (!ctx) {
-    core.info("Not a pull request event \u2014 skipping PRism review.");
-    return;
-  }
-  const config = await buildConfig();
-  core.info(`PRism reviewing PR #${ctx.pullNumber} with ${config.provider}/${config.model}`);
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    core.setFailed("GITHUB_TOKEN is required.");
-    return;
-  }
-  const octokit = github2.getOctokit(token);
-  const files = await fetchPullRequestFiles(octokit, ctx);
-  core.info(`Found ${files.length} changed files`);
   try {
-    const result = await runReview(config, files);
-    core.info(`Review complete \u2014 risk: ${result.review?.overall_risk ?? "unknown"}`);
-    if (result.review) {
-      core.info(`Findings: ${result.review.findings.length}`);
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) throw new Error("GITHUB_TOKEN is required");
+    const configPath = core.getInput("config_path");
+    let config;
+    try {
+      config = await loadConfig(process.cwd());
+    } catch {
+      const provider = core.getInput("provider");
+      const model = core.getInput("model");
+      const apiKeyEnv = core.getInput("api_key_env");
+      if (!provider || !model || !apiKeyEnv) {
+        throw new Error(
+          "No prscope.config.json found and required inputs (provider, model, api_key_env) are missing."
+        );
+      }
+      config = resolveConfig({
+        provider,
+        model,
+        apiKeyEnv,
+        baseUrl: core.getInput("base_url") || void 0,
+        profile: core.getInput("profile") || "balanced",
+        commentMode: core.getInput("comment_mode") || "summary-only",
+        maxFiles: parseInt(core.getInput("max_files") || "30", 10),
+        maxDiffBytes: parseInt(core.getInput("max_diff_bytes") || "100000", 10),
+        configPath: configPath || void 0
+      });
     }
-    await upsertComment(octokit, ctx, result.comment);
-    core.info("Comment posted successfully.");
+    const octokit = github2.getOctokit(token);
+    const ctx = getPullRequestContext();
+    const files = await fetchPullRequestFiles(octokit, ctx);
+    core.info(`Reviewing ${files.length} files with ${config.provider}/${config.model}`);
+    const comment = await runReview(config, files);
+    await upsertComment(octokit, ctx, comment);
+    core.info("Review posted.");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    core.warning(`Review failed: ${message}`);
-    const fallback = renderFallbackComment(message);
-    await upsertComment(octokit, ctx, fallback);
-  }
-}
-async function buildConfig() {
-  const configPath = core.getInput("config_path");
-  const inputOverrides = {};
-  const provider = core.getInput("provider");
-  if (provider) inputOverrides.provider = provider;
-  const model = core.getInput("model");
-  if (model) inputOverrides.model = model;
-  const apiKeyEnv = core.getInput("api_key_env");
-  if (apiKeyEnv) inputOverrides.apiKeyEnv = apiKeyEnv;
-  const baseUrl = core.getInput("base_url");
-  if (baseUrl) inputOverrides.baseUrl = baseUrl;
-  const profile = core.getInput("profile");
-  if (profile) inputOverrides.profile = profile;
-  const commentMode = core.getInput("comment_mode");
-  if (commentMode) inputOverrides.commentMode = commentMode;
-  const maxFiles = core.getInput("max_files");
-  if (maxFiles) inputOverrides.maxFiles = parseInt(maxFiles, 10);
-  const maxDiffBytes = core.getInput("max_diff_bytes");
-  if (maxDiffBytes) inputOverrides.maxDiffBytes = parseInt(maxDiffBytes, 10);
-  try {
-    const fileConfig = await loadConfig(
-      configPath ? configPath : process.cwd()
-    );
-    return resolveConfig(inputOverrides, fileConfig);
-  } catch {
-    if (Object.keys(inputOverrides).length > 0 && inputOverrides.provider && inputOverrides.model && inputOverrides.apiKeyEnv) {
-      return resolveConfig(inputOverrides);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    core.setFailed(message);
+    try {
+      const token = process.env.GITHUB_TOKEN;
+      if (token) {
+        const octokit = github2.getOctokit(token);
+        const ctx = getPullRequestContext();
+        await upsertComment(octokit, ctx, renderFallbackComment(message));
+      }
+    } catch {
     }
-    throw new Error(
-      "No config found. Either provide a prism.config.json or pass required inputs (provider, model, api_key_env)."
-    );
   }
 }
-run().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  core.setFailed(message);
-});
+run();
 //# sourceMappingURL=index.cjs.map

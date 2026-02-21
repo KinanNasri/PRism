@@ -1,17 +1,17 @@
-name: "PRism Review"
-description: "AI-powered pull request reviewer — see through your pull requests."
-author: "PRism"
+name: "PRScope"
+description: "AI-powered pull request reviews that actually help."
+author: "KinanNasri"
 
 inputs:
   config_path:
-    description: "Path to prism.config.json (relative to repo root)"
+    description: "Path to prscope.config.json (relative to repo root)"
     required: false
     default: ""
   provider:
     description: "LLM provider: openai | anthropic | openai-compat | ollama"
     required: false
   model:
-    description: "Model identifier (e.g. gpt-4o, claude-sonnet-4-20250514)"
+    description: "Model identifier (e.g. gpt-4.1, claude-sonnet-4-20250514)"
     required: false
   api_key_env:
     description: "Environment variable name containing the API key"
@@ -37,5 +37,5 @@ runs:
   main: "dist/index.cjs"
 
 branding:
-  icon: "eye"
-  color: "purple"
+  icon: "search"
+  color: "blue"

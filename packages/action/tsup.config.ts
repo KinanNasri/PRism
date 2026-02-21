@@ -8,5 +8,5 @@ export default defineConfig({
     sourcemap: true,
     clean: true,
     target: "node20",
-    noExternal: [/prism-core/],
+    noExternal: [/prscope-core/],
 });

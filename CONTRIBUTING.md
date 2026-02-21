@@ -1,60 +1,51 @@
-# Contributing to PRism
+# Contributing to PRScope
 
-Thanks for your interest. Here's how to get going.
+Thanks for your interest in contributing.
 
-## Dev Setup
+## Setup
 
 ```bash
-git clone https://github.com/prism-review/prism.git
-cd prism
+git clone https://github.com/KinanNasri/PRScope.git
+cd PRScope
 pnpm install
 pnpm run build
 ```
 
-This is a pnpm workspace with three packages:
+## Development
 
-- `packages/core` — review engine, providers, types
-- `packages/cli` — interactive setup wizard
-- `packages/action` — GitHub Action entry point
+The project is a pnpm monorepo with three packages:
 
-## Making Changes
+- `packages/core` — Review engine, diff parsing, LLM providers, schema validation
+- `packages/cli` — The `prscope` CLI (interactive setup wizard)
+- `packages/action` — GitHub Action wrapper
 
-1. Fork the repo and create a feature branch.
-2. Make changes in the appropriate package.
-3. Run `pnpm run typecheck` to verify types.
-4. Run `pnpm run build` to check compilation.
-5. Run `pnpm run test` if you're touching core logic.
-6. Open a PR with a clear description of what changed and why.
-
-## Code Style
-
-- Strict TypeScript — no `any`, no `@ts-ignore`.
-- Small focused modules. One concern per file.
-- Meaningful names. If a function name reads like a sentence, it doesn't need a comment.
-- Errors are values. Handle them explicitly, never swallow silently.
-- No heavy dependencies. Every `npm install` is a decision.
-
-## PR Guidelines
-
-- Keep PRs small and focused. One concern per PR.
-- Write a clear title and description.
-- Reference related issues if applicable.
-- Make sure CI passes before requesting review.
-
-## Testing
-
-Tests live alongside source files or in `__tests__` directories. We use Vitest:
+### Building
 
 ```bash
-pnpm run test           # all packages
-pnpm --filter @prism-review/core run test  # core only
+pnpm run build        # builds all packages
+pnpm run test         # runs all tests
+pnpm run typecheck    # checks types across all packages
 ```
 
-Focus testing on:
-- Diff parsing and filtering
-- Schema validation (valid + invalid payloads)
-- Markdown rendering output
+### Testing
 
-## Questions?
+```bash
+cd packages/core
+pnpm run test
+```
 
-Open an issue. We're friendly.
+## Pull requests
+
+- Keep changes focused — one concern per PR
+- Add tests for new functionality
+- Make sure `pnpm run build` and `pnpm run test` pass before submitting
+- Use clear commit messages
+
+## Reporting issues
+
+Open an issue on [GitHub](https://github.com/KinanNasri/PRScope/issues). Include:
+
+- What you expected
+- What happened
+- Steps to reproduce
+- Your Node.js version and OS

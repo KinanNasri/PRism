@@ -1,42 +1,46 @@
+#!/usr/bin/env node
 import { runInit } from "./commands/init.js";
 import * as ui from "./ui.js";
 
-const HELP_TEXT = `
-  Usage: prism <command>
-
-  Commands:
-    init    Set up PRism in your repository
-
-  Options:
-    --help  Show this help message
-
-  Examples:
-    npx prism init
-    bunx prism init
-`;
+const args = process.argv.slice(2);
+const command = args[0];
 
 async function main(): Promise<void> {
-    const args = process.argv.slice(2);
-    const command = args[0];
+  switch (command) {
+    case "init":
+      await runInit();
+      break;
 
-    if (!command || command === "--help" || command === "-h") {
-        ui.banner();
-        console.log(HELP_TEXT);
-        return;
-    }
+    case "--help":
+    case "-h":
+    case undefined:
+      ui.banner();
+      console.log("  Usage: prscope <command>");
+      console.log("");
+      console.log("  Commands:");
+      console.log("    init    Set up PRScope in your repository");
+      console.log("");
+      console.log("  Options:");
+      console.log("    --help  Show this help message");
+      console.log("");
+      console.log("  Examples:");
+      console.log("    npx prscope init");
+      console.log("    bunx prscope init");
+      console.log("");
+      break;
 
-    if (command === "init") {
-        await runInit();
-        return;
-    }
-
-    ui.error(`Unknown command: ${command}`);
-    console.log(HELP_TEXT);
-    process.exitCode = 1;
+    default:
+      ui.error(`Unknown command: ${command}`);
+      console.log("  Run prscope --help for usage info.");
+      process.exit(1);
+  }
 }
 
 main().catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    ui.error(message);
-    process.exitCode = 1;
+  if (err instanceof Error && err.message.includes("User force closed")) {
+    console.log("\n  Cancelled.\n");
+    process.exit(0);
+  }
+  ui.error(err instanceof Error ? err.message : "An unexpected error occurred");
+  process.exit(1);
 });

@@ -1,5 +1,5 @@
 {
-    "name": "prism-action",
+    "name": "prscope-action",
     "version": "0.1.0",
     "type": "module",
     "main": "./dist/index.js",
@@ -10,7 +10,7 @@
         "lint": "tsc --noEmit"
     },
     "dependencies": {
-        "prism-core": "workspace:*",
+        "prscope-core": "workspace:*",
         "@actions/core": "^1.11.1",
         "@actions/github": "^6.0.0"
     },

@@ -28,7 +28,7 @@ export interface ReviewResult {
     praise: string[];
 }
 
-export interface PrismConfig {
+export interface PRScopeConfig {
     provider: ProviderType;
     model: string;
     apiKeyEnv: string;
@@ -68,14 +68,14 @@ export interface ChatProvider {
 
 export interface ReviewInput {
     files: PullRequestFile[];
-    config: PrismConfig;
+    config: PRScopeConfig;
 }
 
-export const PRISM_COMMENT_MARKER = "<!-- prism:review -->";
+export const PRSCOPE_COMMENT_MARKER = "<!-- prscope:review -->";
 
-export const CONFIG_FILENAMES = ["prism.config.json", ".prismrc.json"] as const;
+export const CONFIG_FILENAMES = ["prscope.config.json", ".prscopeRC.json"] as const;
 
-export const DEFAULT_CONFIG: Omit<PrismConfig, "provider" | "model" | "apiKeyEnv"> = {
+export const DEFAULT_CONFIG: Omit<PRScopeConfig, "provider" | "model" | "apiKeyEnv"> = {
     profile: "balanced",
     commentMode: "summary-only",
     maxFiles: 30,
