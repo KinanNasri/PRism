@@ -5,7 +5,6 @@ import {
     createAnthropicProvider,
     createOpenAICompatProvider,
     createOllamaProvider,
-    OLLAMA_RECOMMENDED_MODELS,
 } from "prism-core";
 import type { ModelInfo, ProviderType } from "prism-core";
 import { generateConfig } from "../generators/config.js";
@@ -14,6 +13,7 @@ import * as ui from "../ui.js";
 import {
     askProvider,
     askApiKeyEnv,
+    askApiKeyForFetch,
     askBaseUrl,
     askModelFromList,
     askModelManual,
@@ -21,6 +21,7 @@ import {
     askCommentMode,
     askMaxFiles,
     askMaxDiffBytes,
+    getFallbackModels,
 } from "./init-prompts.js";
 
 export async function runInit(): Promise<void> {
@@ -31,19 +32,28 @@ export async function runInit(): Promise<void> {
     const apiKeyEnv = await askApiKeyEnv(provider);
     const baseUrl = await askBaseUrl(provider);
 
-    ui.heading("Detecting models");
+    ui.heading("Model selection");
 
-    const models = await fetchModelsForProvider(provider, apiKeyEnv, baseUrl);
+    const apiKey = await askApiKeyForFetch(provider, apiKeyEnv);
+    let models: ModelInfo[] = [];
+
+    if (apiKey || provider === "ollama") {
+        ui.info("Fetching available models...");
+        models = await fetchModelsForProvider(provider, apiKey, baseUrl);
+    }
+
     let model: string;
+    const fallback = getFallbackModels(provider);
 
     if (models.length > 0) {
         ui.success(`Found ${models.length} available models`);
         model = await askModelFromList(models);
-    } else {
-        ui.warn("Could not fetch model list — falling back to manual entry");
-        if (provider === "ollama") {
-            ui.info(`Recommended: ${OLLAMA_RECOMMENDED_MODELS.slice(0, 3).join(", ")}`);
+    } else if (fallback.length > 0) {
+        if (apiKey) {
+            ui.warn("Could not fetch live models — showing known models instead");
         }
+        model = await askModelFromList(fallback);
+    } else {
         model = await askModelManual();
     }
 
@@ -100,11 +110,9 @@ export async function runInit(): Promise<void> {
 
 async function fetchModelsForProvider(
     provider: ProviderType,
-    apiKeyEnv: string,
+    apiKey: string,
     baseUrl?: string,
 ): Promise<ModelInfo[]> {
-    const apiKey = process.env[apiKeyEnv] ?? "";
-
     try {
         switch (provider) {
             case "openai": {
