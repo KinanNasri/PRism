@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { runInit } from "./commands/init.js";
 import * as ui from "./ui.js";
 
