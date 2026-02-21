@@ -1,4 +1,4 @@
-import type { PrismConfig, ReviewProfile, CommentMode } from "@prism-review/core";
+import type { PrismConfig, ReviewProfile, CommentMode } from "prism-core";
 
 export function generateConfig(options: {
     provider: PrismConfig["provider"];

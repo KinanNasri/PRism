@@ -1,12 +1,12 @@
-import type { PrismConfig } from "@prism-review/core";
+import type { PrismConfig } from "prism-core";
 
 export function generateWorkflow(options: {
-    provider: PrismConfig["provider"];
-    apiKeyEnv: string;
+  provider: PrismConfig["provider"];
+  apiKeyEnv: string;
 }): string {
-    const secretName = options.apiKeyEnv.replace(/_/g, "_");
+  const secretName = options.apiKeyEnv.replace(/_/g, "_");
 
-    return `name: PRism Review
+  return `name: PRism Review
 
 on:
   pull_request:

@@ -1,5 +1,5 @@
 {
-    "name": "prism-review",
+    "name": "prism",
     "version": "0.1.0",
     "type": "module",
     "bin": {
@@ -13,7 +13,7 @@
         "lint": "tsc --noEmit"
     },
     "dependencies": {
-        "@prism-review/core": "workspace:*",
+        "prism-core": "workspace:*",
         "@inquirer/prompts": "^7.2.1"
     },
     "devDependencies": {

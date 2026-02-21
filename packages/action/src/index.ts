@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { loadConfig, resolveConfig, runReview, renderFallbackComment } from "@prism-review/core";
-import type { PrismConfig } from "@prism-review/core";
+import { loadConfig, resolveConfig, runReview, renderFallbackComment } from "prism-core";
+import type { PrismConfig } from "prism-core";
 import { getPullRequestContext, fetchPullRequestFiles, upsertComment } from "./github.js";
 
 async function run(): Promise<void> {

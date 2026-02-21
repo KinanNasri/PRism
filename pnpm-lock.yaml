@@ -29,7 +29,7 @@ importers:
       '@actions/github':
         specifier: ^6.0.0
         version: 6.0.1
-      '@prism-review/core':
+      prism-core:
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -48,7 +48,7 @@ importers:
       '@inquirer/prompts':
         specifier: ^7.2.1
         version: 7.10.1(@types/node@20.19.33)
-      '@prism-review/core':
+      prism-core:
         specifier: workspace:*
         version: link:../core
     devDependencies:

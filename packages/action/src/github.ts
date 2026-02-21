@@ -1,6 +1,6 @@
 import * as github from "@actions/github";
-import type { PullRequestFile } from "@prism-review/core";
-import { PRISM_COMMENT_MARKER } from "@prism-review/core";
+import type { PullRequestFile } from "prism-core";
+import { PRISM_COMMENT_MARKER } from "prism-core";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 

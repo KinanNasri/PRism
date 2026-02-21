@@ -8,5 +8,5 @@ export default defineConfig({
     sourcemap: true,
     clean: true,
     target: "node20",
-    noExternal: [/@prism-review/],
+    noExternal: [/prism-core/],
 });

@@ -1,5 +1,5 @@
 import { select, input, search, confirm } from "@inquirer/prompts";
-import type { ProviderType, ReviewProfile, CommentMode, ModelInfo } from "@prism-review/core";
+import type { ProviderType, ReviewProfile, CommentMode, ModelInfo } from "prism-core";
 
 export async function askProvider(): Promise<ProviderType> {
     return select({

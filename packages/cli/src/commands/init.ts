@@ -6,8 +6,8 @@ import {
     createOpenAICompatProvider,
     createOllamaProvider,
     OLLAMA_RECOMMENDED_MODELS,
-} from "@prism-review/core";
-import type { ModelInfo, ProviderType } from "@prism-review/core";
+} from "prism-core";
+import type { ModelInfo, ProviderType } from "prism-core";
 import { generateConfig } from "../generators/config.js";
 import { generateWorkflow } from "../generators/workflow.js";
 import * as ui from "../ui.js";
