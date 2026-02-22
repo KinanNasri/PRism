@@ -1,9 +1,8 @@
-<img width="647" height="700" alt="image" src="https://github.com/user-attachments/assets/51989308-93cd-4ff2-9e65-c5da525ec51d" /><div align="center">
 
 # PRScope
-<img width="647" height="700" alt="image" src="https://github.com/user-attachments/assets/5b3ae721-1ae5-43ba-a85e-3308bef0d783" />
 
 **AI-powered code reviews that actually help.**
+<img width="647" height="700" alt="image" src="https://github.com/user-attachments/assets/5b3ae721-1ae5-43ba-a85e-3308bef0d783" />
 
 Stop waiting days for human reviewers to point out an unvalidated input six files deep.
 PRScope reads your diffs, understands context, and posts structured findings — directly on your pull request in under a minute.
