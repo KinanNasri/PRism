@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run PRScope
-        uses: KinanNasri/PRScope@main
+        uses: KinanNasri/PRScope/packages/action@main
         with:
           config_path: prscope.config.json
         env:
